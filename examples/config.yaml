@@ -1,0 +1,52 @@
+# tiny-samba structural configuration.
+# Source of truth for: server settings, declared users, shares, per-user access.
+# Passwords live in passwords.yaml.
+
+server:
+  workgroup: WORKGROUP        # NetBIOS workgroup. 1-15 chars.
+  netbios_name: tiny-samba    # Server name visible to SMB clients. 1-15 chars.
+  data_uid: 1000              # All on-disk data owned by this UID inside the
+                              # container. Match your host user (Docker) or
+                              # configure idmap to deploy_uid (wisp).
+  min_protocol: SMB3          # SMB3 covers all modern clients. Use SMB2 if
+                              # you have an old MFP/scanner that only does
+                              # SMB2; SMB1 only for very old XP/Vista era kit.
+  # icon_model: TimeCapsule6,106
+                              # Sent to macOS clients via Samba's `fruit`
+                              # extension to pick the Finder sidebar icon.
+                              # Default is TimeCapsule6,106 (white box, NAS
+                              # look). Other Apple model strings work too:
+                              # Xserve1,1 (server), MacPro6,1 (cylinder),
+                              # Macmini7,1, iMac15,1. Set to "-" to disable
+                              # the AAPL extensions entirely (and lose the
+                              # macOS speedups that come with them).
+  # wsd: true                 # Run a wsdd2 sidecar so the server appears in
+                              # Windows Explorer's Network sidebar via
+                              # WS-Discovery (and LLMNR for name lookups).
+                              # Default true. Set false to skip the sidecar
+                              # if you don't need Windows discoverability.
+
+users:
+  - alice
+  - bob
+  - carol
+
+shares:
+  documents:
+    path: /data/documents
+    comment: Shared documents
+    access:
+      alice: rw
+      bob: ro
+
+  media:
+    path: /data/media
+    access:
+      alice: ro
+      carol: rw
+
+  public:
+    path: /data/public
+    comment: Anyone can read
+    guest: true               # When guest=true, the access list is ignored.
+                              # Guest shares are always read-only.
