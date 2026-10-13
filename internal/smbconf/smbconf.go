@@ -19,15 +19,17 @@ const (
 	LogPath = "/dev/stderr"
 )
 
-// Generate renders smb.conf from a validated Config.
-func Generate(cfg *config.Config) string {
+// Generate renders smb.conf from a validated Config. noXattr names the shares
+// whose filesystem can't store extended attributes (probed by the caller, so
+// this stays a pure function).
+func Generate(cfg *config.Config, noXattr map[string]bool) string {
 	var b strings.Builder
 
 	writeGlobal(&b, cfg)
 
 	names := sortedShareNames(cfg.Shares)
 	for _, name := range names {
-		writeShare(&b, name, cfg.Shares[name])
+		writeShare(&b, cfg, name, cfg.Shares[name], noXattr[name])
 	}
 
 	return b.String()
@@ -87,7 +89,8 @@ func writeGlobal(b *strings.Builder, cfg *config.Config) {
 	// Plus proper resource-fork / FinderInfo handling so .DS_Store and
 	// extended attributes work without smearing across the share.
 	// Harmless on Windows / Linux clients (negotiated only by Apple).
-	// Skipped entirely if icon_model is set to "-" (escape hatch).
+	// Skipped entirely if icon_model is set to "-" (escape hatch). Needs a
+	// filesystem with xattrs; shares without them override it (writeShare).
 	if cfg.Server.IconModel != "-" {
 		kv(b, "vfs objects", "catia fruit streams_xattr")
 		kv(b, "fruit:metadata", "stream")
@@ -101,7 +104,7 @@ func writeGlobal(b *strings.Builder, cfg *config.Config) {
 	}
 }
 
-func writeShare(b *strings.Builder, name string, sh config.Share) {
+func writeShare(b *strings.Builder, cfg *config.Config, name string, sh config.Share, noXattr bool) {
 	b.WriteString("\n")
 	fmt.Fprintf(b, "[%s]\n", name)
 	kv(b, "path", sh.Path)
@@ -113,6 +116,20 @@ func writeShare(b *strings.Builder, name string, sh config.Share) {
 	kv(b, "force group", SMBGroupName)
 	kv(b, "create mask", "0660")
 	kv(b, "directory mask", "0770")
+
+	// Filesystem without extended attributes (exFAT, vfat, some CIFS
+	// mounts). streams_xattr, fruit's metadata, DOS attributes and EAs all
+	// live in xattrs, and Samba fails the request with "not supported"
+	// instead of falling back — Windows Explorer copies then abort with
+	// "Item not found" / robocopy ERROR 50. Override per share so clients
+	// treat it like a plain USB stick: no streams, attributes not kept.
+	if noXattr {
+		if cfg.Server.IconModel != "-" {
+			kv(b, "vfs objects", "catia")
+		}
+		kv(b, "store dos attributes", "no")
+		kv(b, "ea support", "no")
+	}
 
 	if sh.Guest {
 		kv(b, "guest ok", "yes")

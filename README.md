@@ -166,6 +166,28 @@ enforced by smbd, *not* by filesystem permissions.
   owned by the deploy user. Without this override, smbuser's writes
   appear as `nobody:65534` on disk.
 
+## Filesystems without extended attributes
+
+Samba keeps Windows and macOS metadata (DOS attributes, creation time,
+alternate data streams such as the "downloaded from the internet" tag,
+Finder info) in extended attributes. exFAT, vfat and some CIFS mounts have
+none, and Samba then fails the request instead of falling back — Explorer
+copies abort with "Item not found" / robocopy `ERROR 50`.
+
+On every start and reload, tiny-samba probes each share path with a
+throwaway `user.*` xattr. Shares that can't store one get, in their own
+section:
+
+```
+vfs objects = catia          # (only when Apple extensions are on)
+store dos attributes = no
+ea support = no
+```
+
+and a `WARN` line in the log. Clients then treat the share like a plain USB
+stick: copies work, but DOS attributes and creation times aren't kept,
+streams are dropped, and macOS falls back to `._` AppleDouble files.
+
 ## Connecting from Windows
 
 ### Discoverability

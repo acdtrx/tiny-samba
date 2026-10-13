@@ -36,7 +36,8 @@ func TestGenerate_Golden(t *testing.T) {
 	}
 	cfg.Server.ApplyDefaults()
 
-	got := Generate(cfg)
+	// media sits on a filesystem without xattrs (e.g. exFAT).
+	got := Generate(cfg, map[string]bool{"media": true})
 
 	goldenPath := filepath.Join("testdata", "golden.conf")
 	if os.Getenv("UPDATE_GOLDEN") == "1" {

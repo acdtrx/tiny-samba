@@ -93,7 +93,7 @@ func applyConfig(cfg *config.Config, pw config.Passwords, smbConfPath string) er
 	// find the passdb backend; if our config isn't there yet, it'd use
 	// Debian's default smb.conf (or fail), which can pick a different
 	// backend than we want.
-	conf := smbconf.Generate(cfg)
+	conf := smbconf.Generate(cfg, probeNoXattrShares(cfg))
 	if err := os.WriteFile(smbConfPath, []byte(conf), 0644); err != nil {
 		return err
 	}
@@ -110,4 +110,23 @@ func applyConfig(cfg *config.Config, pw config.Passwords, smbConfPath string) er
 	}
 
 	return nil
+}
+
+// probeNoXattrShares returns the set of share names whose path can't store
+// extended attributes (exFAT, vfat, some CIFS mounts). Probed on every apply
+// because a share's backing filesystem can change between reloads.
+func probeNoXattrShares(cfg *config.Config) map[string]bool {
+	noXattr := map[string]bool{}
+	for name, sh := range cfg.Shares {
+		ok, err := supportsXattr(sh.Path)
+		if err != nil {
+			logf("WARN share %q: could not probe extended attribute support at %s: %v — keeping default config", name, sh.Path, err)
+			continue
+		}
+		if !ok {
+			noXattr[name] = true
+			logf("WARN share %q: filesystem at %s has no extended attribute support — Apple extensions, alternate data streams and stored DOS attributes are off for this share", name, sh.Path)
+		}
+	}
+	return noXattr
 }
